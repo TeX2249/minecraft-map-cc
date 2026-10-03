@@ -1,0 +1,278 @@
+local scanner = peripheral.find("geoScanner")
+local monitor = peripheral.find("monitor")
+
+if not scanner then
+    error("GeoScanner introuvable")
+end
+
+if not monitor then
+    error("Monitor introuvable")
+end
+
+monitor.setTextScale(0.5)
+
+local radius = 8
+local zoom = 1
+local offsetX = 0
+local offsetZ = 0
+local blocks = {}
+
+local function save()
+    local file = fs.open("mapdata", "w")
+    file.write(textutils.serialize(blocks))
+    file.close()
+end
+
+local function load()
+    if fs.exists("mapdata") then
+        local file = fs.open("mapdata", "r")
+        local data = textutils.unserialize(file.readAll())
+        file.close()
+
+        if type(data) == "table" then
+            blocks = data
+        end
+    end
+end
+
+local function symbol(name)
+
+    if name:find("water") then
+        return "~"
+    end
+
+    if name:find("lava") then
+        return "!"
+    end
+
+    if name:find("grass") or name:find("leaves") then
+        return '"'
+    end
+
+    if name:find("log") or name:find("wood") then
+        return "T"
+    end
+
+    if name:find("stone") or name:find("deepslate") then
+        return "#"
+    end
+
+    if name:find("ore") then
+        return "$"
+    end
+
+    if name:find("glass") then
+        return "O"
+    end
+
+    if name:find("brick") then
+        return "+"
+    end
+
+    if name:find("plank") then
+        return "P"
+    end
+
+    if name:find("sand") then
+        return "."
+    end
+
+    return "?"
+end
+
+local function scan()
+
+    monitor.clear()
+    monitor.setCursorPos(1,1)
+    monitor.write("SCAN EN COURS...")
+
+    local data, errorMessage = scanner.scan(radius)
+
+    if not data then
+        monitor.setCursorPos(1,2)
+        monitor.write(tostring(errorMessage))
+        sleep(2)
+        return
+    end
+
+    blocks = {}
+
+    for _, block in ipairs(data) do
+
+        if block.x and block.z and block.name then
+
+            local name = block.name
+
+            if name ~= "minecraft:air"
+            and name ~= "minecraft:cave_air"
+            and name ~= "minecraft:void_air" then
+
+                local key =
+                    tostring(block.x) ..
+                    "," ..
+                    tostring(block.z)
+
+                if not blocks[key]
+                or block.y > blocks[key].y then
+
+                    blocks[key] = {
+                        x = block.x,
+                        y = block.y,
+                        z = block.z,
+                        name = block.name
+                    }
+
+                end
+            end
+        end
+    end
+
+    save()
+
+end
+
+local function draw()
+
+    monitor.clear()
+
+    local width, height =
+        monitor.getSize()
+
+    monitor.setCursorPos(1,1)
+
+    monitor.write(
+        "CARTE | Zoom: " ..
+        zoom
+    )
+
+    local centerX =
+        math.floor(width / 2)
+
+    local centerY =
+        math.floor(height / 2)
+
+    for _, block in pairs(blocks) do
+
+        local screenX =
+            centerX +
+            math.floor(
+                (block.x - offsetX) / zoom
+            )
+
+        local screenY =
+            centerY +
+            math.floor(
+                (block.z - offsetZ) / zoom
+            )
+
+        if screenX >= 1
+        and screenX <= width
+        and screenY >= 2
+        and screenY <= height then
+
+            monitor.setCursorPos(
+                screenX,
+                screenY
+            )
+
+            monitor.write(
+                symbol(block.name)
+            )
+
+        end
+    end
+
+    monitor.setCursorPos(
+        centerX,
+        centerY
+    )
+
+    monitor.write("X")
+
+    monitor.setCursorPos(
+        1,
+        height
+    )
+
+    monitor.write(
+        "R=SCAN +/-=ZOOM"
+    )
+
+end
+
+load()
+draw()
+
+while true do
+
+    local event, key =
+        os.pullEvent()
+
+    if event == "key" then
+
+        if key == keys.r then
+
+            scan()
+            draw()
+
+        elseif key == keys.add
+        or key == keys.equals then
+
+            zoom =
+                math.max(
+                    1,
+                    zoom - 1
+                )
+
+            draw()
+
+        elseif key == keys.subtract
+        or key == keys.minus then
+
+            zoom =
+                zoom + 1
+
+            draw()
+
+        elseif key == keys.left then
+
+            offsetX =
+                offsetX - zoom
+
+            draw()
+
+        elseif key == keys.right then
+
+            offsetX =
+                offsetX + zoom
+
+            draw()
+
+        elseif key == keys.up then
+
+            offsetZ =
+                offsetZ - zoom
+
+            draw()
+
+        elseif key == keys.down then
+
+            offsetZ =
+                offsetZ + zoom
+
+            draw()
+
+        elseif key == keys.q then
+
+            monitor.clear()
+            break
+
+        end
+
+    elseif event == "monitor_touch" then
+
+        scan()
+        draw()
+
+    end
+end
